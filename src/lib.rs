@@ -61,4 +61,9 @@ impl H3Conn {
         conn.wake_send();
         self.inner.send_request(&mut conn.inner.borrow_mut(), headers, fin)
     }
+
+    pub fn poll(&mut self, conn: &Conn) -> h3::Result<(u64, h3::Event)> {
+        conn.wake_send();
+        self.inner.poll(&mut conn.inner.borrow_mut())
+    }
 }
