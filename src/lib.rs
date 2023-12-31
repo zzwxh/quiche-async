@@ -28,6 +28,11 @@ impl AsyncConn {
         self.inner.borrow_mut().recv(buf, info)
     }
 
+    pub fn on_timeout(&self) {
+        self.wake_send();
+        self.inner.borrow_mut().on_timeout()
+    }
+
     fn wake_send(&self) {
         if let Some(waker) = self.send_waker.take() {
             waker.wake();
