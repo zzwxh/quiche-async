@@ -45,7 +45,7 @@ async fn async_main() {
     tokio::task::spawn_local(read_loop(quic_conn.clone(), socket.clone(), local));
     tokio::task::spawn_local(write_loop(quic_conn.clone(), socket.clone()));
 
-    quic_conn.wait_establish().await;
+    quic_conn.wait_for_established().await;
 
     println!("is_established");
     let config = quiche::h3::Config::new().unwrap();

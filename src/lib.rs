@@ -16,7 +16,7 @@ pub struct Conn {
 impl Conn {
     pub async fn generate_outgoing_packet(&self, out: &mut [u8]) -> Result<(usize, SendInfo)> {
         std::future::poll_fn(|cx| {
-            self.wake_establish();
+            self.wake_is_established();
             match self.inner.borrow_mut().send(out) {
                 Err(Error::Done) => {
                     self.send.replace(Some(cx.waker().clone()));
@@ -30,7 +30,7 @@ impl Conn {
 
     pub fn process_incoming_packet(&self, buf: &mut [u8], info: RecvInfo) -> Result<usize> {
         self.wake_send();
-        self.wake_establish();
+        self.wake_is_established();
         self.wake_poll();
         self.inner.borrow_mut().recv(buf, info)
     }
@@ -40,7 +40,7 @@ impl Conn {
         self.inner.borrow_mut().on_timeout()
     }
 
-    pub async fn wait_establish(&self) {
+    pub async fn wait_for_established(&self) {
         std::future::poll_fn(|cx| match self.inner.borrow().is_established() {
             false => {
                 self.is_established.replace(Some(cx.waker().clone()));
@@ -57,7 +57,7 @@ impl Conn {
         }
     }
 
-    fn wake_establish(&self) {
+    fn wake_is_established(&self) {
         if let Some(waker) = self.is_established.take() {
             waker.wake();
         }
