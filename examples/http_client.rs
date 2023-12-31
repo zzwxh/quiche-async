@@ -45,7 +45,7 @@ async fn async_main() {
     tokio::task::spawn_local(read_loop(quic_conn.clone(), socket.clone(), local));
     tokio::task::spawn_local(write_loop(quic_conn.clone(), socket.clone()));
 
-    quic_conn.wait_for_established().await;
+    quic_conn.is_established_async().await;
 
     println!("is_established");
     let config = quiche::h3::Config::new().unwrap();
@@ -60,7 +60,7 @@ async fn async_main() {
     h3_conn.send_request(&quic_conn, headers, true).unwrap();
     let mut buf = [0; 65527];
     loop {
-        match h3_conn.poll(&quic_conn).await {
+        match h3_conn.poll_async(&quic_conn).await {
             Ok((stream_id, quiche::h3::Event::Headers { list, .. })) => {
                 println!("got response headers {:?} on stream id {}", list, stream_id);
             }
@@ -99,7 +99,7 @@ async fn read_loop(quic_conn: Rc<Conn>, socket: Rc<UdpSocket>, local: SocketAddr
     loop {
         let (len, from) = socket.recv_from(&mut buf).await.unwrap();
         println!("got {}", len);
-        match quic_conn.process_incoming_packet(&mut buf[..len], RecvInfo { from, to: local }) {
+        match quic_conn.recv(&mut buf[..len], RecvInfo { from, to: local }) {
             Ok(len) => println!("processed {}", len),
             Err(e) => println!("recv failed {}", e),
         }
@@ -109,7 +109,7 @@ async fn read_loop(quic_conn: Rc<Conn>, socket: Rc<UdpSocket>, local: SocketAddr
 async fn write_loop(quic_conn: Rc<Conn>, socket: Rc<UdpSocket>) {
     let mut buf = [0; 1200];
     loop {
-        let (len, info) = quic_conn.generate_outgoing_packet(&mut buf).await.unwrap();
+        let (len, info) = quic_conn.send_async(&mut buf).await.unwrap();
         socket.send_to(&buf[..len], info.to).await.unwrap();
         println!("written {}", len);
     }
