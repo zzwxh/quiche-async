@@ -6,12 +6,12 @@ use std::{
 
 use quiche::{Config, Connection, ConnectionId, Error, RecvInfo, Result, SendInfo};
 
-pub struct AsyncConn {
+pub struct Conn {
     inner: RefCell<Connection>,
     send_waker: Cell<Option<Waker>>,
 }
 
-impl AsyncConn {
+impl Conn {
     pub async fn send(&self, out: &mut [u8]) -> Result<(usize, SendInfo)> {
         std::future::poll_fn(|cx| match self.inner.borrow_mut().send(out) {
             Err(Error::Done) => {
@@ -40,8 +40,8 @@ impl AsyncConn {
     }
 }
 
-pub fn connect(server_name: Option<&str>, scid: &ConnectionId, local: SocketAddr, peer: SocketAddr, config: &mut Config) -> Result<AsyncConn> {
-    quiche::connect(server_name, scid, local, peer, config).map(|conn| AsyncConn {
+pub fn connect(server_name: Option<&str>, scid: &ConnectionId, local: SocketAddr, peer: SocketAddr, config: &mut Config) -> Result<Conn> {
+    quiche::connect(server_name, scid, local, peer, config).map(|conn| Conn {
         inner: RefCell::new(conn),
         send_waker: Cell::new(None),
     })
