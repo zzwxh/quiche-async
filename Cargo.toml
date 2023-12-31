@@ -1,0 +1,13 @@
+[package]
+name = "quiche-async"
+version = "0.0.0"
+edition = "2021"
+description = "thin wrapper"
+readme = "README.md"
+repository = "https://github.com/zzwxh/quiche-async"
+license = "BSD-2-Clause"
+keywords = ["quic", "http3"]
+categories = ["network-programming"]
+
+[dependencies]
+quiche = "0.20"
