@@ -14,7 +14,7 @@ pub struct Conn {
 }
 
 impl Conn {
-    pub async fn send(&self, out: &mut [u8]) -> Result<(usize, SendInfo)> {
+    pub async fn generate_outgoing_packet(&self, out: &mut [u8]) -> Result<(usize, SendInfo)> {
         std::future::poll_fn(|cx| {
             self.wake_establish();
             match self.inner.borrow_mut().send(out) {
@@ -28,7 +28,7 @@ impl Conn {
         .await
     }
 
-    pub fn recv(&self, buf: &mut [u8], info: RecvInfo) -> Result<usize> {
+    pub fn process_incoming_packet(&self, buf: &mut [u8], info: RecvInfo) -> Result<usize> {
         self.wake_send();
         self.wake_establish();
         self.wake_poll();

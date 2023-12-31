@@ -99,7 +99,7 @@ async fn read_loop(quic_conn: Rc<Conn>, socket: Rc<UdpSocket>, local: SocketAddr
     loop {
         let (len, from) = socket.recv_from(&mut buf).await.unwrap();
         println!("got {}", len);
-        match quic_conn.recv(&mut buf[..len], RecvInfo { from, to: local }) {
+        match quic_conn.process_incoming_packet(&mut buf[..len], RecvInfo { from, to: local }) {
             Ok(len) => println!("processed {}", len),
             Err(e) => println!("recv failed {}", e),
         }
@@ -109,7 +109,7 @@ async fn read_loop(quic_conn: Rc<Conn>, socket: Rc<UdpSocket>, local: SocketAddr
 async fn write_loop(quic_conn: Rc<Conn>, socket: Rc<UdpSocket>) {
     let mut buf = [0; 1200];
     loop {
-        let (len, info) = quic_conn.send(&mut buf).await.unwrap();
+        let (len, info) = quic_conn.generate_outgoing_packet(&mut buf).await.unwrap();
         socket.send_to(&buf[..len], info.to).await.unwrap();
         println!("written {}", len);
     }
