@@ -8,15 +8,6 @@ use std::{
 
 use quiche::{h3, Config, Connection, ConnectionId, Error, RecvInfo, Result, SendInfo};
 
-pub fn connect(server_name: Option<&str>, scid: &ConnectionId, local: SocketAddr, peer: SocketAddr, config: &mut Config) -> Result<Conn> {
-    quiche::connect(server_name, scid, local, peer, config).map(|conn| Conn {
-        inner: RefCell::new(conn),
-        send: Cell::new(None),
-        is_established: Cell::new(None),
-        poll: Cell::new(None),
-    })
-}
-
 pub struct Conn {
     inner: RefCell<Connection>,
     send: Cell<Option<Waker>>,
@@ -29,6 +20,15 @@ pub struct H3Conn {
 }
 
 impl Conn {
+    pub fn connect(server_name: Option<&str>, scid: &ConnectionId, local: SocketAddr, peer: SocketAddr, config: &mut Config) -> Result<Self> {
+        quiche::connect(server_name, scid, local, peer, config).map(|conn| Self {
+            inner: RefCell::new(conn),
+            send: Cell::new(None),
+            is_established: Cell::new(None),
+            poll: Cell::new(None),
+        })
+    }
+
     pub fn send(&self, out: &mut [u8]) -> Result<(usize, SendInfo)> {
         wake(&self.is_established);
         self.inner.borrow_mut().send(out)
@@ -68,9 +68,9 @@ impl Conn {
 }
 
 impl H3Conn {
-    pub fn with_transport(conn: &Conn, config: &h3::Config) -> h3::Result<H3Conn> {
+    pub fn with_transport(conn: &Conn, config: &h3::Config) -> h3::Result<Self> {
         wake(&conn.send);
-        h3::Connection::with_transport(&mut conn.inner.borrow_mut(), config).map(|conn| H3Conn { inner: conn })
+        h3::Connection::with_transport(&mut conn.inner.borrow_mut(), config).map(|conn| Self { inner: conn })
     }
 
     pub fn send_request<T: h3::NameValue>(&mut self, conn: &Conn, headers: &[T], fin: bool) -> h3::Result<u64> {

@@ -39,7 +39,7 @@ async fn async_main() {
     SystemRandom::new().fill(&mut scid).unwrap();
     let scid = ConnectionId::from_ref(&scid);
 
-    let quic_conn = quiche_async::connect(Some("quic.aiortc.org"), &scid, local, peer, &mut config).unwrap();
+    let quic_conn = Conn::connect(Some("quic.aiortc.org"), &scid, local, peer, &mut config).unwrap();
 
     let quic_conn = Rc::new(quic_conn);
     let socket = Rc::new(socket);
