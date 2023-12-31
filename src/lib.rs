@@ -66,4 +66,9 @@ impl H3Conn {
         conn.wake_send();
         self.inner.poll(&mut conn.inner.borrow_mut())
     }
+
+    pub fn recv_body(&mut self, conn: &Conn, stream_id: u64, out: &mut [u8]) -> h3::Result<usize> {
+        conn.wake_send();
+        self.inner.recv_body(&mut conn.inner.borrow_mut(), stream_id, out)
+    }
 }
