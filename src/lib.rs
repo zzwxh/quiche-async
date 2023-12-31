@@ -24,8 +24,8 @@ impl Conn {
         quiche::connect(server_name, scid, local, peer, config).map(|conn| Self {
             inner: RefCell::new(conn),
             send: Cell::new(None),
-            is_established: Cell::new(None),
             poll: Cell::new(None),
+            is_established: Cell::new(None),
         })
     }
 
