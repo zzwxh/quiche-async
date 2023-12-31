@@ -56,4 +56,9 @@ impl H3Conn {
         conn.wake_send();
         h3::Connection::with_transport(&mut conn.inner.borrow_mut(), config).map(|conn| H3Conn { inner: conn })
     }
+
+    pub fn send_request<T: h3::NameValue>(&mut self, conn: &Conn, headers: &[T], fin: bool) -> h3::Result<u64> {
+        conn.wake_send();
+        self.inner.send_request(&mut conn.inner.borrow_mut(), headers, fin)
+    }
 }
