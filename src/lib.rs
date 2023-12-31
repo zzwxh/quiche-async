@@ -29,16 +29,16 @@ impl Conn {
         })
     }
 
-    pub fn send(&self, out: &mut [u8]) -> Result<(usize, SendInfo)> {
-        wake(&self.is_established);
-        self.inner.borrow_mut().send(out)
-    }
-
     pub fn recv(&self, buf: &mut [u8], info: RecvInfo) -> Result<usize> {
         wake(&self.send);
         wake(&self.poll);
         wake(&self.is_established);
         self.inner.borrow_mut().recv(buf, info)
+    }
+
+    pub fn send(&self, out: &mut [u8]) -> Result<(usize, SendInfo)> {
+        wake(&self.is_established);
+        self.inner.borrow_mut().send(out)
     }
 
     pub fn on_timeout(&self) {
