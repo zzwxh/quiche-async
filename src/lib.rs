@@ -4,7 +4,7 @@ use std::{
     task::{Poll, Waker},
 };
 
-use quiche::{Config, Connection, ConnectionId, Error, RecvInfo, Result, SendInfo};
+use quiche::{h3, Config, Connection, ConnectionId, Error, RecvInfo, Result, SendInfo};
 
 pub struct Conn {
     inner: RefCell<Connection>,
@@ -45,4 +45,15 @@ pub fn connect(server_name: Option<&str>, scid: &ConnectionId, local: SocketAddr
         inner: RefCell::new(conn),
         send_waker: Cell::new(None),
     })
+}
+
+pub struct H3Conn {
+    inner: h3::Connection,
+}
+
+impl H3Conn {
+    pub fn with_transport(conn: &Conn, config: &h3::Config) -> h3::Result<H3Conn> {
+        conn.wake_send();
+        h3::Connection::with_transport(&mut conn.inner.borrow_mut(), config).map(|conn| H3Conn { inner: conn })
+    }
 }
