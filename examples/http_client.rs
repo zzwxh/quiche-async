@@ -1,19 +1,20 @@
 #![forbid(unsafe_code)]
 
 use std::{
+    future::Future,
     net::{SocketAddr, ToSocketAddrs},
+    pin::Pin,
     rc::Rc,
 };
 
 use quiche::{ConnectionId, RecvInfo};
 use quiche_async::{Conn, H3Conn};
 use ring::rand::{SecureRandom, SystemRandom};
-use tokio::{net::UdpSocket, runtime::Builder, task::LocalSet};
+use tokio::{net::UdpSocket, task::LocalSet};
 
-fn main() {
-    let rt = Builder::new_current_thread().enable_io().build().unwrap();
-    let set = LocalSet::new();
-    set.block_on(&rt, async_main());
+#[tokio::main(flavor = "current_thread")]
+async fn main() {
+    LocalSet::new().run_until(async_main()).await
 }
 
 async fn async_main() {
@@ -99,11 +100,24 @@ async fn async_main() {
 async fn read_loop(quic_conn: Rc<Conn>, socket: Rc<UdpSocket>, local: SocketAddr) {
     let mut buf = [0; 65527];
     loop {
-        let (len, from) = socket.recv_from(&mut buf).await.unwrap();
-        println!("got {}", len);
-        match quic_conn.recv(&mut buf[..len], RecvInfo { from, to: local }) {
-            Ok(len) => println!("processed {}", len),
-            Err(e) => println!("recv failed {}", e),
+        let timeout: Pin<Box<dyn Future<Output = ()>>> = if let Some(deadline) = quic_conn.timeout_instant() {
+            Box::pin(tokio::time::sleep_until(tokio::time::Instant::from_std(deadline)))
+        } else {
+            Box::pin(std::future::pending())
+        };
+
+        tokio::select! {
+            result = socket.recv_from(&mut buf) => {
+                let (len, from) = result.unwrap();
+                println!("got {}", len);
+                match quic_conn.recv(&mut buf[..len], RecvInfo { from, to: local }) {
+                    Ok(len) => println!("processed {}", len),
+                    Err(e) => println!("recv failed {}", e),
+                }
+            }
+            _ = timeout => {
+                quic_conn.on_timeout();
+            }
         }
     }
 }
