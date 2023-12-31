@@ -10,6 +10,7 @@ pub struct Conn {
     inner: RefCell<Connection>,
     send_waker: Cell<Option<Waker>>,
     establish_waker: Cell<Option<Waker>>,
+    poll_waker: Cell<Option<Waker>>,
 }
 
 impl Conn {
@@ -30,6 +31,7 @@ impl Conn {
     pub fn recv(&self, buf: &mut [u8], info: RecvInfo) -> Result<usize> {
         self.wake_send();
         self.wake_establish();
+        self.wake_poll();
         self.inner.borrow_mut().recv(buf, info)
     }
 
@@ -60,6 +62,12 @@ impl Conn {
             waker.wake();
         }
     }
+
+    fn wake_poll(&self) {
+        if let Some(waker) = self.poll_waker.take() {
+            waker.wake();
+        }
+    }
 }
 
 pub fn connect(server_name: Option<&str>, scid: &ConnectionId, local: SocketAddr, peer: SocketAddr, config: &mut Config) -> Result<Conn> {
@@ -67,6 +75,7 @@ pub fn connect(server_name: Option<&str>, scid: &ConnectionId, local: SocketAddr
         inner: RefCell::new(conn),
         send_waker: Cell::new(None),
         establish_waker: Cell::new(None),
+        poll_waker: Cell::new(None),
     })
 }
 
@@ -85,9 +94,18 @@ impl H3Conn {
         self.inner.send_request(&mut conn.inner.borrow_mut(), headers, fin)
     }
 
-    pub fn poll(&mut self, conn: &Conn) -> h3::Result<(u64, h3::Event)> {
-        conn.wake_send();
-        self.inner.poll(&mut conn.inner.borrow_mut())
+    pub async fn poll(&mut self, conn: &Conn) -> h3::Result<(u64, h3::Event)> {
+        std::future::poll_fn(|cx| {
+            conn.wake_send();
+            match self.inner.poll(&mut conn.inner.borrow_mut()) {
+                Err(h3::Error::Done) => {
+                    conn.poll_waker.replace(Some(cx.waker().clone()));
+                    Poll::Pending
+                }
+                v => Poll::Ready(v),
+            }
+        })
+        .await
     }
 
     pub fn recv_body(&mut self, conn: &Conn, stream_id: u64, out: &mut [u8]) -> h3::Result<usize> {

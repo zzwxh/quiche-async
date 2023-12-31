@@ -9,7 +9,7 @@ use ring::rand::{SecureRandom, SystemRandom};
 use tokio::{net::UdpSocket, runtime::Builder, task::LocalSet};
 
 fn main() {
-    let rt = Builder::new_current_thread().enable_all().build().unwrap();
+    let rt = Builder::new_current_thread().enable_io().build().unwrap();
     let set = LocalSet::new();
     set.block_on(&rt, async_main());
 }
@@ -60,8 +60,7 @@ async fn async_main() {
     h3_conn.send_request(&quic_conn, headers, true).unwrap();
     let mut buf = [0; 65527];
     loop {
-        tokio::time::sleep(std::time::Duration::from_millis(0)).await;
-        match h3_conn.poll(&quic_conn) {
+        match h3_conn.poll(&quic_conn).await {
             Ok((stream_id, quiche::h3::Event::Headers { list, .. })) => {
                 println!("got response headers {:?} on stream id {}", list, stream_id);
             }
@@ -87,8 +86,6 @@ async fn async_main() {
             Ok((goaway_id, quiche::h3::Event::GoAway)) => {
                 println!("GOAWAY id={}", goaway_id);
             }
-
-            Err(quiche::h3::Error::Done) => {}
 
             Err(e) => {
                 println!("HTTP/3 processing failed: {:?}", e);
