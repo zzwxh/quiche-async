@@ -8,9 +8,9 @@ use quiche::{h3, Config, Connection, ConnectionId, Error, RecvInfo, Result, Send
 
 pub struct Conn {
     inner: RefCell<Connection>,
-    send_waker: Cell<Option<Waker>>,
-    establish_waker: Cell<Option<Waker>>,
-    poll_waker: Cell<Option<Waker>>,
+    send: Cell<Option<Waker>>,
+    is_established: Cell<Option<Waker>>,
+    poll: Cell<Option<Waker>>,
 }
 
 impl Conn {
@@ -19,7 +19,7 @@ impl Conn {
             self.wake_establish();
             match self.inner.borrow_mut().send(out) {
                 Err(Error::Done) => {
-                    self.send_waker.replace(Some(cx.waker().clone()));
+                    self.send.replace(Some(cx.waker().clone()));
                     Poll::Pending
                 }
                 v => Poll::Ready(v),
@@ -43,7 +43,7 @@ impl Conn {
     pub async fn wait_establish(&self) {
         std::future::poll_fn(|cx| match self.inner.borrow().is_established() {
             false => {
-                self.establish_waker.replace(Some(cx.waker().clone()));
+                self.is_established.replace(Some(cx.waker().clone()));
                 Poll::Pending
             }
             true => Poll::Ready(()),
@@ -52,19 +52,19 @@ impl Conn {
     }
 
     fn wake_send(&self) {
-        if let Some(waker) = self.send_waker.take() {
+        if let Some(waker) = self.send.take() {
             waker.wake();
         }
     }
 
     fn wake_establish(&self) {
-        if let Some(waker) = self.establish_waker.take() {
+        if let Some(waker) = self.is_established.take() {
             waker.wake();
         }
     }
 
     fn wake_poll(&self) {
-        if let Some(waker) = self.poll_waker.take() {
+        if let Some(waker) = self.poll.take() {
             waker.wake();
         }
     }
@@ -73,9 +73,9 @@ impl Conn {
 pub fn connect(server_name: Option<&str>, scid: &ConnectionId, local: SocketAddr, peer: SocketAddr, config: &mut Config) -> Result<Conn> {
     quiche::connect(server_name, scid, local, peer, config).map(|conn| Conn {
         inner: RefCell::new(conn),
-        send_waker: Cell::new(None),
-        establish_waker: Cell::new(None),
-        poll_waker: Cell::new(None),
+        send: Cell::new(None),
+        is_established: Cell::new(None),
+        poll: Cell::new(None),
     })
 }
 
@@ -99,7 +99,7 @@ impl H3Conn {
             conn.wake_send();
             match self.inner.poll(&mut conn.inner.borrow_mut()) {
                 Err(h3::Error::Done) => {
-                    conn.poll_waker.replace(Some(cx.waker().clone()));
+                    conn.poll.replace(Some(cx.waker().clone()));
                     Poll::Pending
                 }
                 v => Poll::Ready(v),
