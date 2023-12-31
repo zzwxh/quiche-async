@@ -4,6 +4,7 @@ use std::{
     cell::{Cell, RefCell},
     net::SocketAddr,
     task::{Context, Poll, Waker},
+    time::{Duration, Instant},
 };
 
 use quiche::{h3, Config, Connection, ConnectionId, Error, RecvInfo, Result, SendInfo};
@@ -39,6 +40,14 @@ impl Conn {
     pub fn send(&self, out: &mut [u8]) -> Result<(usize, SendInfo)> {
         wake(&self.is_established);
         self.inner.borrow_mut().send(out)
+    }
+
+    pub fn timeout_instant(&self) -> Option<Instant> {
+        self.inner.borrow().timeout_instant()
+    }
+
+    pub fn timeout(&self) -> Option<Duration> {
+        self.inner.borrow().timeout()
     }
 
     pub fn on_timeout(&self) {
