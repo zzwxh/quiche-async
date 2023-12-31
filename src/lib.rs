@@ -16,7 +16,7 @@ pub struct Conn {
 impl Conn {
     pub async fn generate_outgoing_packet(&self, out: &mut [u8]) -> Result<(usize, SendInfo)> {
         std::future::poll_fn(|cx| {
-            self.wake_is_established();
+            wake(&self.is_established);
             match self.inner.borrow_mut().send(out) {
                 Err(Error::Done) => {
                     self.send.replace(Some(cx.waker().clone()));
@@ -29,14 +29,14 @@ impl Conn {
     }
 
     pub fn process_incoming_packet(&self, buf: &mut [u8], info: RecvInfo) -> Result<usize> {
-        self.wake_send();
-        self.wake_is_established();
-        self.wake_poll();
+        wake(&self.send);
+        wake(&self.is_established);
+        wake(&self.poll);
         self.inner.borrow_mut().recv(buf, info)
     }
 
     pub fn on_timeout(&self) {
-        self.wake_send();
+        wake(&self.send);
         self.inner.borrow_mut().on_timeout()
     }
 
@@ -50,23 +50,11 @@ impl Conn {
         })
         .await
     }
+}
 
-    fn wake_send(&self) {
-        if let Some(waker) = self.send.take() {
-            waker.wake();
-        }
-    }
-
-    fn wake_is_established(&self) {
-        if let Some(waker) = self.is_established.take() {
-            waker.wake();
-        }
-    }
-
-    fn wake_poll(&self) {
-        if let Some(waker) = self.poll.take() {
-            waker.wake();
-        }
+fn wake(waker: &Cell<Option<Waker>>) {
+    if let Some(waker) = waker.take() {
+        waker.wake();
     }
 }
 
@@ -85,18 +73,18 @@ pub struct H3Conn {
 
 impl H3Conn {
     pub fn with_transport(conn: &Conn, config: &h3::Config) -> h3::Result<H3Conn> {
-        conn.wake_send();
+        wake(&conn.send);
         h3::Connection::with_transport(&mut conn.inner.borrow_mut(), config).map(|conn| H3Conn { inner: conn })
     }
 
     pub fn send_request<T: h3::NameValue>(&mut self, conn: &Conn, headers: &[T], fin: bool) -> h3::Result<u64> {
-        conn.wake_send();
+        wake(&conn.send);
         self.inner.send_request(&mut conn.inner.borrow_mut(), headers, fin)
     }
 
     pub async fn poll(&mut self, conn: &Conn) -> h3::Result<(u64, h3::Event)> {
         std::future::poll_fn(|cx| {
-            conn.wake_send();
+            wake(&conn.send);
             match self.inner.poll(&mut conn.inner.borrow_mut()) {
                 Err(h3::Error::Done) => {
                     conn.poll.replace(Some(cx.waker().clone()));
@@ -109,7 +97,7 @@ impl H3Conn {
     }
 
     pub fn recv_body(&mut self, conn: &Conn, stream_id: u64, out: &mut [u8]) -> h3::Result<usize> {
-        conn.wake_send();
+        wake(&conn.send);
         self.inner.recv_body(&mut conn.inner.borrow_mut(), stream_id, out)
     }
 }
