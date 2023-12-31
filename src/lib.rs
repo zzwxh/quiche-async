@@ -33,6 +33,10 @@ impl Conn {
         self.inner.borrow_mut().on_timeout()
     }
 
+    pub fn is_established(&self) -> bool {
+        self.inner.borrow().is_established()
+    }
+
     fn wake_send(&self) {
         if let Some(waker) = self.send_waker.take() {
             waker.wake();
