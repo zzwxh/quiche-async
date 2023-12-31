@@ -9,22 +9,27 @@ use quiche::{h3, Config, Connection, ConnectionId, Error, RecvInfo, Result, Send
 pub struct Conn {
     inner: RefCell<Connection>,
     send_waker: Cell<Option<Waker>>,
+    establish_waker: Cell<Option<Waker>>,
 }
 
 impl Conn {
     pub async fn send(&self, out: &mut [u8]) -> Result<(usize, SendInfo)> {
-        std::future::poll_fn(|cx| match self.inner.borrow_mut().send(out) {
-            Err(Error::Done) => {
-                self.send_waker.replace(Some(cx.waker().clone()));
-                Poll::Pending
+        std::future::poll_fn(|cx| {
+            self.wake_establish();
+            match self.inner.borrow_mut().send(out) {
+                Err(Error::Done) => {
+                    self.send_waker.replace(Some(cx.waker().clone()));
+                    Poll::Pending
+                }
+                v => Poll::Ready(v),
             }
-            v => Poll::Ready(v),
         })
         .await
     }
 
     pub fn recv(&self, buf: &mut [u8], info: RecvInfo) -> Result<usize> {
         self.wake_send();
+        self.wake_establish();
         self.inner.borrow_mut().recv(buf, info)
     }
 
@@ -33,12 +38,25 @@ impl Conn {
         self.inner.borrow_mut().on_timeout()
     }
 
-    pub fn is_established(&self) -> bool {
-        self.inner.borrow().is_established()
+    pub async fn wait_establish(&self) {
+        std::future::poll_fn(|cx| match self.inner.borrow().is_established() {
+            false => {
+                self.establish_waker.replace(Some(cx.waker().clone()));
+                Poll::Pending
+            }
+            true => Poll::Ready(()),
+        })
+        .await
     }
 
     fn wake_send(&self) {
         if let Some(waker) = self.send_waker.take() {
+            waker.wake();
+        }
+    }
+
+    fn wake_establish(&self) {
+        if let Some(waker) = self.establish_waker.take() {
             waker.wake();
         }
     }
@@ -48,6 +66,7 @@ pub fn connect(server_name: Option<&str>, scid: &ConnectionId, local: SocketAddr
     quiche::connect(server_name, scid, local, peer, config).map(|conn| Conn {
         inner: RefCell::new(conn),
         send_waker: Cell::new(None),
+        establish_waker: Cell::new(None),
     })
 }
 

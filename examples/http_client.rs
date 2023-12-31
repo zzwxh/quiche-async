@@ -45,9 +45,8 @@ async fn async_main() {
     tokio::task::spawn_local(read_loop(quic_conn.clone(), socket.clone(), local));
     tokio::task::spawn_local(write_loop(quic_conn.clone(), socket.clone()));
 
-    while !quic_conn.is_established() {
-        tokio::time::sleep(std::time::Duration::from_millis(0)).await;
-    }
+    quic_conn.wait_establish().await;
+
     println!("is_established");
     let config = quiche::h3::Config::new().unwrap();
     let mut h3_conn = H3Conn::with_transport(&quic_conn, &config).unwrap();
