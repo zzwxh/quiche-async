@@ -1,10 +1,9 @@
 #![forbid(unsafe_code)]
 
 use std::{
-    future::Future,
     net::{SocketAddr, ToSocketAddrs},
-    pin::Pin,
     rc::Rc,
+    time::Duration,
 };
 
 use quiche::{ConnectionId, RecvInfo};
@@ -18,7 +17,8 @@ async fn main() {
 }
 
 async fn async_main() {
-    let peer = "quic.aiortc.org:443".to_socket_addrs().unwrap().next().unwrap();
+    let domain = "www.youtube.com";
+    let peer = format!("{}:443", domain).to_socket_addrs().unwrap().next().unwrap();
     let bind = match peer {
         SocketAddr::V4(_) => "0.0.0.0:0",
         SocketAddr::V6(_) => "[::]:0",
@@ -40,7 +40,7 @@ async fn async_main() {
     SystemRandom::new().fill(&mut scid).unwrap();
     let scid = ConnectionId::from_ref(&scid);
 
-    let quic_conn = Conn::connect(Some("quic.aiortc.org"), &scid, local, peer, &mut config).unwrap();
+    let quic_conn = Conn::connect(Some(domain), &scid, local, peer, &mut config).unwrap();
 
     let quic_conn = Rc::new(quic_conn);
     let socket = Rc::new(socket);
@@ -56,7 +56,7 @@ async fn async_main() {
     let headers = &[
         quiche::h3::Header::new(b":method", b"GET"),
         quiche::h3::Header::new(b":scheme", b"https"),
-        quiche::h3::Header::new(b":authority", b"quic.aiortc.org"),
+        quiche::h3::Header::new(b":authority", domain.as_bytes()),
         quiche::h3::Header::new(b":path", b"/"),
         quiche::h3::Header::new(b"user-agent", b"quiche"),
     ];
@@ -72,7 +72,7 @@ async fn async_main() {
                 while let Ok(read) = h3_conn.recv_body(&quic_conn, stream_id, &mut buf) {
                     println!("got {} bytes of response data on stream {}", read, stream_id);
 
-                    print!("{}", String::from_utf8(buf[..read].to_vec()).unwrap());
+                    // print!("{}", String::from_utf8(buf[..read].to_vec()).unwrap());
                 }
             }
 
@@ -100,22 +100,20 @@ async fn async_main() {
 async fn read_loop(quic_conn: Rc<Conn>, socket: Rc<UdpSocket>, local: SocketAddr) {
     let mut buf = [0; 65527];
     loop {
-        let timeout: Pin<Box<dyn Future<Output = ()>>> = if let Some(deadline) = quic_conn.timeout_instant() {
-            Box::pin(tokio::time::sleep_until(tokio::time::Instant::from_std(deadline)))
-        } else {
-            Box::pin(std::future::pending())
-        };
+        let timeout = quic_conn.timeout().unwrap_or(Duration::MAX);
+        println!("timeout={:?}", timeout);
+        let sleep = tokio::time::sleep(timeout);
 
         tokio::select! {
             result = socket.recv_from(&mut buf) => {
                 let (len, from) = result.unwrap();
-                println!("got {}", len);
                 match quic_conn.recv(&mut buf[..len], RecvInfo { from, to: local }) {
                     Ok(len) => println!("processed {}", len),
                     Err(e) => println!("recv failed {}", e),
                 }
             }
-            _ = timeout => {
+            _ = sleep => {
+                println!("on timeout");
                 quic_conn.on_timeout();
             }
         }
@@ -126,7 +124,7 @@ async fn write_loop(quic_conn: Rc<Conn>, socket: Rc<UdpSocket>) {
     let mut buf = [0; 1200];
     loop {
         let (len, info) = quic_conn.send_async(&mut buf).await.unwrap();
-        socket.send_to(&buf[..len], info.to).await.unwrap();
         println!("written {}", len);
+        socket.send_to(&buf[..len], info.to).await.unwrap();
     }
 }
